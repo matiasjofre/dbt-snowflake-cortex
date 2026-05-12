@@ -1,120 +1,187 @@
-## Snowflake Semantic View dbt Package
+## dbt-snowflake-cortex
 
-Professional dbt macros and integration tests for building, dropping, and renaming Snowflake Semantic Views. This package lets you materialize Semantic Views via dbt and reference them from downstream models.
+dbt materializations for managing Snowflake Cortex objects as code.
+
+This package currently supports:
+
+- `semantic_view`: create Snowflake Semantic Views from dbt models.
+- `cortex_agent`: create Snowflake Cortex Agents from dbt models.
+
+The package is Snowflake-only. It intentionally keeps the model body as a SQL
+passthrough so Snowflake remains the source of truth for object validation and
+new Cortex syntax.
+
+### Attribution
+
+This package is a fork and extension of
+[Snowflake-Labs/dbt_semantic_view](https://github.com/Snowflake-Labs/dbt_semantic_view),
+which is licensed under the Apache License 2.0.
+
+The original Semantic View materialization is preserved and extended here. This
+fork renames the package to `dbt_snowflake_cortex` and adds support for managing
+additional Snowflake Cortex objects, starting with Cortex Agents.
 
 ### Compatibility
 
-> **Full SQL API coverage** — This package automatically supports the complete Snowflake `CREATE SEMANTIC VIEW` SQL syntax. When Snowflake introduces new semantic view capabilities, the package picks them up without requiring any code change or package upgrade. Simply update your model definition to use the new syntax and run `dbt build`.
->
-> For the full syntax reference, see [CREATE SEMANTIC VIEW](https://docs.snowflake.com/en/sql-reference/sql/create-semantic-view#syntax).
+- Warehouse: Snowflake
+- dbt package name: `dbt_snowflake_cortex`
+- dbt compatibility: dbt 1.x
 
-### At a glance
-- **Materialization**: `semantic_view`
-- **Warehouse**: Snowflake
-- **dbt Compatibility**: dbt 1.x
+This package does not parse or reimplement Snowflake's Cortex object grammars.
+When Snowflake adds supported syntax to `CREATE SEMANTIC VIEW` or
+`CREATE AGENT`, the package can use that syntax directly in the model body.
 
-### Quickstart
-Follow these steps on macOS/Linux with Python 3 installed. No prior dbt installation is required.
+Snowflake references:
 
-1) Clone and enter the repo
+- [CREATE SEMANTIC VIEW](https://docs.snowflake.com/en/sql-reference/sql/create-semantic-view)
+- [CREATE AGENT](https://docs.snowflake.com/en/sql-reference/sql/create-agent)
+
+### Installation
+
+Install this package instead of `Snowflake-Labs/dbt_semantic_view`. Do not
+install both packages in the same dbt project because both define a
+`semantic_view` materialization.
+
+Until the package is published to dbt Hub, install it from Git:
+
+```yaml
+packages:
+  - git: "https://github.com/<org>/dbt-snowflake-cortex.git"
+    revision: v0.1.0
 ```
-git clone https://github.com/Snowflake-Labs/dbt_semantic_view.git
-cd dbt_semantic_view/
+
+For local development, the integration test project installs the package from
+the parent directory:
+
+```yaml
+packages:
+  - local: ../
 ```
 
-2) Create an isolated Python environment and install dependencies
+### Semantic Views
+
+Create a model with `materialized='semantic_view'`. The model body should start
+after the object name; the materialization adds `CREATE OR REPLACE SEMANTIC VIEW
+<target_relation>`.
+
+```sql
+{{ config(materialized='semantic_view') }}
+
+TABLES (
+  orders AS {{ ref('orders') }}
+    PRIMARY KEY (order_id)
+    COMMENT = 'Order-level fact table.'
+)
+
+DIMENSIONS (
+  orders.order_date AS order_date
+    COMMENT = 'Date the order was placed.'
+)
+
+METRICS (
+  orders.order_count AS COUNT(*)
+    COMMENT = 'Number of orders.'
+)
+
+COMMENT = 'Order analytics semantic view.'
 ```
+
+To preserve grants when replacing a semantic view, either include `COPY GRANTS`
+in the model body or configure it in YAML:
+
+```yaml
+models:
+  - name: sv_orders
+    config:
+      copy_grants: true
+```
+
+### Cortex Agents
+
+Create a model with `materialized='cortex_agent'`. The model body should start
+after the object name; the materialization adds `CREATE OR REPLACE AGENT
+<target_relation>`.
+
+Use `ref()` for semantic views, Cortex Search services, or other dbt-managed
+objects so dbt can build dependencies in the right order.
+
+```sql
+{{ config(materialized='cortex_agent', static_analysis='off') }}
+
+COMMENT = 'Orders assistant backed by a dbt-managed semantic view.'
+PROFILE = '{"display_name": "Orders Assistant", "color": "blue"}'
+FROM SPECIFICATION
+$$
+models:
+  orchestration: claude-4-sonnet
+
+instructions:
+  response: "Answer concisely and cite the metric names you used."
+  orchestration: "Route order analytics questions to orders_analyst."
+  sample_questions:
+    - question: "How many orders did we have last month?"
+
+tools:
+  - tool_spec:
+      type: "cortex_analyst_text_to_sql"
+      name: "orders_analyst"
+      description: "Converts natural language order questions to SQL."
+
+tool_resources:
+  orders_analyst:
+    semantic_view: "{{ ref('sv_orders') }}"
+$$
+```
+
+The package uses a passthrough strategy, so newer Snowflake-supported `CREATE
+AGENT` clauses can also be used directly in the model body as long as the
+compiled SQL is valid in Snowflake.
+
+### Documentation Persistence
+
+dbt-driven documentation persistence for Semantic Views and Cortex Agents is not
+currently implemented by this package. Inline Snowflake comments are supported
+because they are part of the SQL body sent to Snowflake.
+
+For Semantic Views, use inline `COMMENT` syntax in the semantic view definition.
+For Cortex Agents, use the `COMMENT` clause and agent specification metadata.
+
+### Development
+
+Python 3.9+ is recommended.
+
+```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -U pip
 pip install dbt-snowflake
 ```
 
-3) Configure Snowflake credentials (env vars)
+Configure Snowflake credentials for the integration profile:
 
-Set the following environment variables for the integration profile. For username/password auth use `SNOWFLAKE_TEST_AUTHENTICATOR=snowflake`.
-```
+```bash
 export SNOWFLAKE_TEST_ACCOUNT=<account>
 export SNOWFLAKE_TEST_USER=<user>
 export SNOWFLAKE_TEST_PASSWORD=<password>
-export SNOWFLAKE_TEST_AUTHENTICATOR=<authenticator>   # e.g. snowflake | externalbrowser
+export SNOWFLAKE_TEST_AUTHENTICATOR=<authenticator>
 export SNOWFLAKE_TEST_ROLE=<role>
 export SNOWFLAKE_TEST_DATABASE=<database>
 export SNOWFLAKE_TEST_WAREHOUSE=<warehouse>
 export SNOWFLAKE_TEST_SCHEMA=<schema>
 ```
 
-4) Run integration tests
-```
+Run the integration project:
+
+```bash
 cd integration_tests/
 dbt deps --target snowflake
 dbt build --target snowflake
 ```
 
-### Usage in your dbt project
-Add to `packages.yml`:
-```
-packages:
-  - package: Snowflake-Labs/dbt_semantic_view
-    verion: <latest version/your selected version>
-```
-
-To find the current version, see the [dbt_semantic_view package page](https://hub.getdbt.com/Snowflake-Labs/dbt_semantic_view/latest/).
-
-> **Note:** This package is a direct passthrough to Snowflake's SQL layer. You don't need to update the package version to access new Snowflake semantic view features. When Snowflake adds new SQL capabilities (for example, AI_VERIFIED_QUERIES), they will be available immediately via the package without any package update.
-
-Create a model using the Semantic View materialization:
-```
-{{ config(materialized='semantic_view') }}
-TABLES(
-  {{ source('<source_name>', '<table_name>') }},
-  {{ ref('<another_model>') }}
-)
-[ RELATIONSHIPS ( relationshipDef [ , ... ] ) ]
-[ FACTS ( semanticExpression [ , ... ] ) ]
-[ DIMENSIONS ( semanticExpression [ , ... ] ) ]
-[ METRICS ( semanticExpression [ , ... ] ) ]
-[ COMMENT = '<comment>' ]
-[ COPY GRANTS ]
-```
-
-Reference a Semantic View from another model:
-```
-{{ config(materialized='table') }}
-select *
-from semantic_view(
-  {{ ref('<semantic_view_model>') }}
-  [ { METRICS <metric> | FACTS <fact_expr> } ]
-  [ DIMENSIONS <dimension_expr> ]
-  [ WHERE <predicate> ]
-)
-```
-
-### Note on documentation persistence (persist_docs)
-At this time, dbt-driven documentation persistence for Semantic Views (`persist_docs`) is not supported by this package. Enabling `persist_docs` and adding model or column descriptions will not affect Semantic Views.
-
-Inline `COMMENT` syntax within the Semantic View DDL is supported and will be applied by Snowflake. For example:
-```
-CREATE OR REPLACE SEMANTIC VIEW <name>
-  TABLES ( ... COMMENT = '...' )
-  [ FACTS ( ... COMMENT = '...' ) ]
-  [ DIMENSIONS ( ... COMMENT = '...' ) ]
-  [ METRICS ( ... COMMENT = '...' ) ]
-  [ COMMENT = '...' ]
-```
-
-We plan to revisit `persist_docs` support as upstream capabilities evolve.
-
-### Development
-- Python 3.9+ recommended
-- Use a venv: `python3 -m venv .venv && source .venv/bin/activate`
-- Install tooling as needed: `pip install dbt-snowflake`
-
-### Contributing
-We welcome issues and PRs! Please:
-- Open an issue to discuss significant changes
-- Keep edits focused and include tests where possible
-- Follow dbt and Python best practices
+The role used for integration tests needs the privileges required by the objects
+under test, including `CREATE SEMANTIC VIEW` and `CREATE AGENT` on the target
+schema, plus access to referenced objects.
 
 ### License
+
 Apache License 2.0. See `LICENSE` for details.

@@ -1,4 +1,4 @@
-# Copyright 2025 Snowflake Inc. 
+# Copyright 2026 dbt-snowflake-cortex contributors
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,6 +14,6 @@
 # limitations under the License.
 
 packages:
-  - local: ../
-    name: dbt_semantic_view
-sha1_hash: de2deba3d66ce03d8c02949013650cc9b94f6030
+  - local: ..
+    name: dbt_snowflake_cortex
+sha1_hash: f0236c7f2e9f17b56369d819042ae243dfe27246

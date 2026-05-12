@@ -21,7 +21,7 @@ from typing import List, Tuple
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 
 LICENSE_TEXT = (
-    "Copyright 2025 Snowflake Inc. \n"
+    "Copyright 2026 dbt-snowflake-cortex contributors\n"
     "SPDX-License-Identifier: Apache-2.0\n"
     "\n"
     "Licensed under the Apache License, Version 2.0 (the \"License\");\n"
@@ -127,7 +127,20 @@ def apply_header_to_file(path: str) -> Tuple[bool, str]:
 def should_skip_path(path: str) -> bool:
     # Skip common build artifacts or virtual envs if present
     parts = set(path.split(os.sep))
-    skip_dirs = {".git", ".venv", "venv", "node_modules", "dist", "build", "__pycache__"}
+    skip_dirs = {
+        ".git",
+        ".venv",
+        "venv",
+        "node_modules",
+        "dist",
+        "build",
+        "__pycache__",
+        "target",
+        "dbt_packages",
+        "dbt_modules",
+        "logs",
+        "docs",
+    }
     return not parts.isdisjoint(skip_dirs)
 
 

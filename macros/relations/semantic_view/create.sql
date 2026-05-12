@@ -65,14 +65,14 @@
       type='view') -%}
 
   {%- if copy_grants -%}
-    {%- set sql = dbt_semantic_view.append_copy_grants_if_missing(sql) -%}
+    {%- set sql = dbt_snowflake_cortex.append_copy_grants_if_missing(sql) -%}
   {%- endif -%}
 
   {{ run_hooks(pre_hooks) }}
 
   -- build model
   {% call statement('main') -%}
-    {{ dbt_semantic_view.snowflake__get_create_semantic_view_sql(target_relation, sql) }}
+    {{ dbt_snowflake_cortex.snowflake__get_create_semantic_view_sql(target_relation, sql) }}
   {%- endcall %}
 
   {{ run_hooks(post_hooks) }}

@@ -16,6 +16,8 @@
 version: 2
 
 models:
+  - name: cortex_agent_basic
+    description: "Cortex Agent that references the semantic_view_basic model."
   - name: semantic_view_basic
     description: "Semantic view description for persist_docs"
   - name: semantic_view_with_config_copy_grants

@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: "dbt_semantic_view_integration_tests"
+name: "dbt_snowflake_cortex_integration_tests"
 version: "1.0"
 config-version: 2
 
@@ -42,7 +42,7 @@ models:
   +bind: false
   +persist_docs:
     relation: true
-    column: true
+    columns: true
 
 on-run-start:
   - "{{ create_base_table2() }}"

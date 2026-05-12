@@ -1,4 +1,4 @@
--- Copyright 2025 Snowflake Inc. 
+-- Copyright 2026 dbt-snowflake-cortex contributors
 -- SPDX-License-Identifier: Apache-2.0
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,18 +13,10 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
-{% materialization semantic_view, adapter='snowflake' -%}
+{{ config(materialized='test') }}
 
-    {% set original_query_tag = set_query_tag() %}
-    {% do dbt_snowflake_cortex.snowflake__create_or_replace_semantic_view() %}
-
-    {% set target_relation = this.incorporate(type='view') %}
-
-    {# TODO: enable persist_docs after semantic_view is supported as a SnowflakeRelationType #}
-    {# {% do persist_docs(target_relation, model, for_columns=false) %} #}
-
-    {% do unset_query_tag(original_query_tag) %}
-
-    {% do return({'relations': [target_relation]}) %}
-
-{%- endmaterialization %}
+-- Assert the Cortex Agent DDL contains the expected tool name from the specification
+select 'Cortex Agent specification missing expected tool name' as error_message
+where position(
+  'integration_test_semantic_view' in lower(get_ddl('CORTEX_AGENT', '{{ ref('cortex_agent_basic') }}'))
+) = 0
