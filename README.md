@@ -47,7 +47,7 @@ Until the package is published to dbt Hub, install it from Git:
 ```yaml
 packages:
   - git: "https://github.com/<org>/dbt-snowflake-cortex.git"
-    revision: v0.1.0
+    revision: v1.1.0
 ```
 
 For local development, the integration test project installs the package from
