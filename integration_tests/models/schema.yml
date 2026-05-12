@@ -18,6 +18,24 @@ version: 2
 models:
   - name: cortex_agent_basic
     description: "Cortex Agent that references the semantic_view_basic model."
+  - name: cortex_agent_with_tools
+    description: "Cortex Agent that references dbt-managed semantic view, Cortex Search, and stored procedure resources."
+  - name: cortex_search_documents
+    description: "Policy document fixture for Cortex Search integration tests."
+  - name: cortex_search_service_basic
+    description: "Single-index Cortex Search service fixture."
+  - name: cortex_search_service_multi_index
+    description: "Multi-index Cortex Search service fixture."
+  - name: sql_stored_procedure_basic
+    description: "SQL stored procedure fixture for Cortex Agent procedure tools."
+  - name: sql_stored_procedure_results
+    description: "Materialized result from the SQL stored procedure fixture."
+  - name: python_stored_procedure_basic
+    description: "Python stored procedure fixture for Cortex Agent procedure tools."
+    config:
+      enabled: "{{ var('dbt_snowflake_cortex_enable_stored_procedure_integration_tests', false) }}"
+  - name: python_stored_procedure_results
+    description: "Materialized result from the Python stored procedure fixture."
   - name: semantic_view_basic
     description: "Semantic view description for persist_docs"
   - name: semantic_view_with_config_copy_grants

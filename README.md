@@ -6,10 +6,12 @@ This package currently supports:
 
 - `semantic_view`: create Snowflake Semantic Views from dbt models.
 - `cortex_agent`: create Snowflake Cortex Agents from dbt models.
+- `cortex_search_service`: create Snowflake Cortex Search services from dbt models.
+- `stored_procedure`: create Snowflake SQL and Python stored procedures from dbt models.
 
-The package is Snowflake-only. It intentionally keeps the model body as a SQL
-passthrough so Snowflake remains the source of truth for object validation and
-new Cortex syntax.
+The package is Snowflake-only. It keeps Snowflake's DDL syntax as the source of
+truth and uses dbt configs only for object-level clauses that are awkward to
+repeat in every model.
 
 ### Attribution
 
@@ -19,7 +21,7 @@ which is licensed under the Apache License 2.0.
 
 The original Semantic View materialization is preserved and extended here. This
 fork renames the package to `dbt_snowflake_cortex` and adds support for managing
-additional Snowflake Cortex objects, starting with Cortex Agents.
+additional Snowflake Cortex objects.
 
 ### Compatibility
 
@@ -30,11 +32,15 @@ additional Snowflake Cortex objects, starting with Cortex Agents.
 This package does not parse or reimplement Snowflake's Cortex object grammars.
 When Snowflake adds supported syntax to `CREATE SEMANTIC VIEW` or
 `CREATE AGENT`, the package can use that syntax directly in the model body.
+Custom materialization options are placed under `meta.dbt_snowflake_cortex` so
+the package works with dbt engines that validate model config keys strictly.
 
 Snowflake references:
 
 - [CREATE SEMANTIC VIEW](https://docs.snowflake.com/en/sql-reference/sql/create-semantic-view)
 - [CREATE AGENT](https://docs.snowflake.com/en/sql-reference/sql/create-agent)
+- [CREATE CORTEX SEARCH SERVICE](https://docs.snowflake.com/en/sql-reference/sql/create-cortex-search)
+- [CREATE PROCEDURE](https://docs.snowflake.com/en/sql-reference/sql/create-procedure)
 
 ### Installation
 
@@ -196,11 +202,140 @@ models:
       copy_grants: true
 ```
 
+### Cortex Search Services
+
+Create a model with `materialized='cortex_search_service'`. The model body is
+the source query after the `AS` keyword; the materialization adds
+`CREATE OR REPLACE CORTEX SEARCH SERVICE <target_relation>` and the configured
+service clauses.
+
+Use `ref()` in the source query so dbt builds the indexed data before the search
+service.
+
+```sql
+{{
+  config(
+    materialized='cortex_search_service',
+    meta={
+      'dbt_snowflake_cortex': {
+        'search_column': 'body',
+        'primary_key': ['document_id'],
+        'attributes': ['department', 'region'],
+        'warehouse': target.warehouse,
+        'target_lag': '1 hour',
+        'embedding_model': 'snowflake-arctic-embed-l-v2.0',
+        'refresh_mode': 'INCREMENTAL',
+        'initialize': 'ON_SCHEDULE',
+        'full_index_build_interval_days': 7,
+        'request_logging': true,
+        'auto_suspend': 1800,
+        'comment': 'Search service for retail policy documents.'
+      }
+    }
+  )
+}}
+
+select
+  document_id,
+  title,
+  body,
+  department,
+  region
+from {{ ref('retail_policy_documents') }}
+```
+
+For multi-index Cortex Search, pass Snowflake's index specifications directly:
+
+```sql
+{{
+  config(
+    materialized='cortex_search_service',
+    meta={
+      'dbt_snowflake_cortex': {
+        'text_indexes': ['title', 'body'],
+        'vector_indexes': ["body (model='snowflake-arctic-embed-m-v1.5')"],
+        'primary_key': ['document_id'],
+        'attributes': ['department', 'region'],
+        'warehouse': target.warehouse,
+        'target_lag': '1 hour'
+      }
+    }
+  )
+}}
+
+select * from {{ ref('retail_policy_documents') }}
+```
+
+### Stored Procedures
+
+Create SQL stored procedures with `materialized='stored_procedure'`. The model
+body is the Snowflake Scripting procedure body.
+
+```sql
+{{
+  config(
+    materialized='stored_procedure',
+    meta={
+      'dbt_snowflake_cortex': {
+        'arguments': [
+          {'name': 'MIN_ID', 'type': 'NUMBER', 'default': '0'}
+        ],
+        'returns': 'TABLE (ID NUMBER, REVENUE NUMBER)',
+        'execute_as': 'CALLER',
+        'comment': 'Returns retail revenue rows.'
+      }
+    }
+  )
+}}
+
+DECLARE
+  res RESULTSET;
+BEGIN
+  res := (
+    select id, revenue
+    from {{ ref('fct_orders') }}
+    where id >= :MIN_ID
+  );
+  RETURN TABLE(res);
+END
+```
+
+Python procedures can also be managed from SQL model files by setting
+`procedure_language` to `PYTHON`. This keeps the package compatible with dbt
+engines that do not allow custom materializations on Python model files.
+
+```sql
+{{
+  config(
+    materialized='stored_procedure',
+    static_analysis='off',
+    meta={
+      'dbt_snowflake_cortex': {
+        'procedure_language': 'PYTHON',
+        'arguments': ['NAME STRING'],
+        'returns': 'TABLE (GREETING STRING)',
+        'runtime_version': '3.10',
+        'packages': ['snowflake-snowpark-python'],
+        'handler': 'main',
+        'execute_as': 'CALLER'
+      }
+    }
+  )
+}}
+
+def main(session, name):
+    return session.create_dataframe(
+        [[f"hello {name}"]],
+        schema=["GREETING"],
+    )
+```
+
 ### Cortex Agents
 
-Create a model with `materialized='cortex_agent'`. The model body should start
-after the object name; the materialization adds `CREATE OR REPLACE AGENT
-<target_relation>`.
+Create a model with `materialized='cortex_agent'`. By default, the model body is
+the YAML specification object; the materialization adds
+`CREATE OR REPLACE AGENT <target_relation>`, optional `COMMENT`, optional
+`PROFILE`, and `FROM SPECIFICATION $$ ... $$`.
 
 Use `ref()` for semantic views, Cortex Search services, or other dbt-managed
 objects so dbt can build dependencies in the right order.
@@ -209,12 +344,23 @@ For example, a Cortex Agent that uses the semantic view above could live at
 `models/cortex_agents/retail_operations_agent.sql`.
 
 ```sql
-{{ config(materialized='cortex_agent', static_analysis='off') }}
+{{
+  config(
+    materialized='cortex_agent',
+    static_analysis='off',
+    meta={
+      'dbt_snowflake_cortex': {
+        'comment': 'Retail operations assistant backed by dbt-managed Cortex objects.',
+        'profile': {
+          'display_name': 'Retail Operations',
+          'avatar': 'shopping-cart.png',
+          'color': 'green'
+        }
+      }
+    }
+  )
+}}
 
-COMMENT = 'Retail operations assistant backed by dbt-managed Cortex objects.'
-PROFILE = '{"display_name": "Retail Operations", "avatar": "shopping-cart.png", "color": "green"}'
-FROM SPECIFICATION
-$$
 models:
   orchestration: claude-4-sonnet
 
@@ -242,38 +388,60 @@ tools:
       name: "policy_search"
       description: "Searches retail operating procedures, return policies, and fulfillment guidance."
 
+  - tool_spec:
+      type: "generic"
+      name: "revenue_rows"
+      description: "Calls a governed stored procedure that returns revenue rows."
+      input_schema:
+        type: "object"
+        properties:
+          min_id:
+            type: "number"
+            description: "Minimum id to return."
+        required:
+          - min_id
+
 tool_resources:
   retail_orders_analyst:
     semantic_view: "{{ ref('sv_retail_orders') }}"
 
   policy_search:
-    name: "{{ target.database }}.{{ target.schema }}.retail_policy_search_service"
+    name: "{{ ref('retail_policy_search_service') }}"
     max_results: "5"
     filter:
       "@eq":
         department: "Retail Operations"
     title_column: "title"
     id_column: "document_id"
-$$
+
+  revenue_rows:
+    type: "procedure"
+    identifier: "{{ ref('get_revenue_rows') }}"
+    execution_environment:
+      type: "warehouse"
+      warehouse: "{{ target.warehouse }}"
+      query_timeout: 60
 ```
 
-The package uses a passthrough strategy, so newer Snowflake-supported `CREATE
-AGENT` clauses can also be used directly in the model body as long as the
-compiled SQL is valid in Snowflake.
+To use the older pass-through style, set
+`meta.dbt_snowflake_cortex.agent_body_mode: raw` or start the model body with
+`COMMENT`, `PROFILE`, or `FROM SPECIFICATION`; the package will then append the
+body directly after `CREATE OR REPLACE AGENT <target_relation>`.
 
-The important dependency edge is the `ref()` inside the agent specification:
-`semantic_view: "{{ ref('sv_retail_orders') }}"`. dbt will compile that reference to
-the fully qualified semantic view name and build the semantic view before the
-agent.
+The important dependency edges are the `ref()` calls inside `tool_resources`.
+dbt will compile them to fully qualified names and build the semantic view,
+search service, and stored procedure before the agent.
 
 ### Documentation Persistence
 
-dbt-driven documentation persistence for Semantic Views and Cortex Agents is not
-currently implemented by this package. Inline Snowflake comments are supported
-because they are part of the SQL body sent to Snowflake.
+dbt-driven documentation persistence for Cortex object comments is not currently
+implemented by this package. Inline Snowflake comments and
+`meta.dbt_snowflake_cortex.comment` are supported because they are part of the
+DDL sent to Snowflake.
 
 For Semantic Views, use inline `COMMENT` syntax in the semantic view definition.
-For Cortex Agents, use the `COMMENT` clause and agent specification metadata.
+For Cortex Agents, Cortex Search services, and stored procedures, use the
+package `comment` config or the relevant Snowflake `COMMENT` clause in raw mode.
 
 ### Development
 
@@ -307,9 +475,28 @@ dbt deps --target snowflake
 dbt build --target snowflake
 ```
 
+Search service and stored procedure fixtures are opt-in because they require
+additional privileges and may create Cortex serving/indexing resources:
+
+```bash
+dbt build --target snowflake \
+  --vars '{
+    "dbt_snowflake_cortex_enable_cortex_search_integration_tests": true,
+    "dbt_snowflake_cortex_enable_stored_procedure_integration_tests": true,
+    "dbt_snowflake_cortex_enable_agent_tool_integration_tests": true
+  }'
+```
+
 The role used for integration tests needs the privileges required by the objects
-under test, including `CREATE SEMANTIC VIEW` and `CREATE AGENT` on the target
-schema, plus access to referenced objects.
+under test, including `CREATE SEMANTIC VIEW`, `CREATE AGENT`,
+`CREATE CORTEX SEARCH SERVICE`, `CREATE PROCEDURE`, warehouse `USAGE`, Cortex
+database roles for embedding/search, and access to referenced objects.
+
+To inspect representative DDL without creating Snowflake objects:
+
+```bash
+dbt run-operation generate_sample_ddl --target snowflake
+```
 
 ### License
 
