@@ -62,7 +62,7 @@
   {%- else %}
   FROM SPECIFICATION
   $$
-  {{ body }}
+{{ body }}
   $$;
   {%- endif %}
 

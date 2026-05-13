@@ -63,7 +63,7 @@
   {{ dbt_snowflake_cortex.profile_clause(dbt_snowflake_cortex.get_config('profile', none)) }}
   FROM SPECIFICATION
   $$
-  {{ body }}
+{{ body }}
   $$;
   {%- endif %}
 
