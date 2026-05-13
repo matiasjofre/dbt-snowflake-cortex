@@ -17,7 +17,7 @@
 
 -- Compare sum(value) from BASE_TABLE to metric from semantic view
 with base_sum as (
-  select sum(value) as v from {{ ref('base_table') }}
+  select sum(revenue) as v from {{ ref('base_table') }}
 ), sv as (
   select * from semantic_view({{ ref('semantic_view_basic') }} metrics total_rows)
 )

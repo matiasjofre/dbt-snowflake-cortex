@@ -1,4 +1,4 @@
--- Copyright 2025 Snowflake Inc. 
+-- Copyright 2026 dbt-snowflake-cortex contributors
 -- SPDX-License-Identifier: Apache-2.0
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +13,10 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
-{{ config(materialized='semantic_view') }}
-TABLES(t1 AS {{ ref('base_table') }})
-DIMENSIONS(t1.count as value)
-METRICS(t1.total_rows AS SUM(t1.revenue))
+{{ config(materialized='test') }}
+
+-- Assert the MCP Server DDL contains the expected tool name from the specification
+select 'MCP Server specification missing expected tool name' as error_message
+where position(
+  'test-analyst' in lower(get_ddl('MCP_SERVER', '{{ ref('mcp_server_basic') }}'))
+) = 0

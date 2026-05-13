@@ -47,3 +47,5 @@ models:
   - name: semantic_view_with_calc_name_copy_grants
     config:
       copy_grants: true
+  - name: mcp_server_basic
+    description: "MCP Server fixture with Analyst and SQL execution tools."

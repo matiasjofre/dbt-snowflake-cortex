@@ -1,4 +1,4 @@
--- Copyright 2025 Snowflake Inc. 
+-- Copyright 2026 dbt-snowflake-cortex contributors
 -- SPDX-License-Identifier: Apache-2.0
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +13,6 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
-{{ config(materialized='semantic_view') }}
-TABLES(t1 AS {{ ref('base_table') }})
-DIMENSIONS(t1.count as value)
-METRICS(t1.total_rows AS SUM(t1.revenue))
+{% macro snowflake__get_drop_mcp_server_sql(relation) %}
+    drop mcp server if exists {{ relation }}
+{% endmacro %}

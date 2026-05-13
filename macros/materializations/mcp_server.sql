@@ -1,4 +1,4 @@
--- Copyright 2025 Snowflake Inc. 
+-- Copyright 2026 dbt-snowflake-cortex contributors
 -- SPDX-License-Identifier: Apache-2.0
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +13,15 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
-{{ config(materialized='semantic_view') }}
-TABLES(t1 AS {{ ref('base_table') }})
-DIMENSIONS(t1.count as value)
-METRICS(t1.total_rows AS SUM(t1.revenue))
+{% materialization mcp_server, adapter='snowflake' -%}
+
+    {% set original_query_tag = set_query_tag() %}
+    {% do dbt_snowflake_cortex.snowflake__create_or_replace_mcp_server() %}
+
+    {% set target_relation = this.incorporate(type='external') %}
+
+    {% do unset_query_tag(original_query_tag) %}
+
+    {% do return({'relations': [target_relation]}) %}
+
+{%- endmaterialization %}
