@@ -112,8 +112,33 @@ tool_resources:
 $$;
   {%- endset -%}
 
+  {%- set mcp_server_ddl -%}
+create or replace mcp server DEV_DB.ANALYTICS.RETAIL_OPERATIONS_MCP
+  from specification
+$$
+tools:
+  - name: "retail-orders-analyst"
+    type: "CORTEX_ANALYST_MESSAGE"
+    identifier: "DEV_DB.ANALYTICS.SV_RETAIL_ORDERS"
+    description: "Answers retail order, revenue, customer, and channel questions."
+    title: "Retail Orders Analyst"
+  - name: "policy-search"
+    type: "CORTEX_SEARCH_SERVICE_QUERY"
+    identifier: "DEV_DB.ANALYTICS.RETAIL_POLICY_SEARCH"
+    description: "Searches retail operating procedures and return policies."
+    title: "Retail Policy Search"
+  - name: "sql-exec"
+    type: "SYSTEM_EXECUTE_SQL"
+    description: "Executes SQL against the connected Snowflake database."
+    title: "SQL Execution"
+$$;
+
+comment on mcp server DEV_DB.ANALYTICS.RETAIL_OPERATIONS_MCP is 'Retail MCP server backed by dbt-managed Cortex objects.';
+  {%- endset -%}
+
   {{ log("\n-- semantic view\n" ~ semantic_view_ddl, info=true) }}
   {{ log("\n-- cortex search service\n" ~ search_service_ddl, info=true) }}
   {{ log("\n-- stored procedure\n" ~ stored_procedure_ddl, info=true) }}
   {{ log("\n-- cortex agent\n" ~ agent_ddl, info=true) }}
+  {{ log("\n-- mcp server\n" ~ mcp_server_ddl, info=true) }}
 {% endmacro %}

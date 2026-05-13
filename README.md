@@ -7,6 +7,7 @@ This package currently supports:
 - `semantic_view`: create Snowflake Semantic Views from dbt models.
 - `cortex_agent`: create Snowflake Cortex Agents from dbt models.
 - `cortex_search_service`: create Snowflake Cortex Search services from dbt models.
+- `mcp_server`: create Snowflake-managed MCP Servers from dbt models.
 - `stored_procedure`: create Snowflake SQL and Python stored procedures from dbt models.
 
 The package is Snowflake-only. It keeps Snowflake's DDL syntax as the source of
@@ -30,8 +31,8 @@ additional Snowflake Cortex objects.
 - dbt compatibility: dbt 1.x
 
 This package does not parse or reimplement Snowflake's Cortex object grammars.
-When Snowflake adds supported syntax to `CREATE SEMANTIC VIEW` or
-`CREATE AGENT`, the package can use that syntax directly in the model body.
+When Snowflake adds supported syntax to Cortex object DDL, the package can use
+that syntax directly in the model body.
 Custom materialization options are placed under `meta.dbt_snowflake_cortex` so
 the package works with dbt engines that validate model config keys strictly.
 
@@ -40,6 +41,7 @@ Snowflake references:
 - [CREATE SEMANTIC VIEW](https://docs.snowflake.com/en/sql-reference/sql/create-semantic-view)
 - [CREATE AGENT](https://docs.snowflake.com/en/sql-reference/sql/create-agent)
 - [CREATE CORTEX SEARCH SERVICE](https://docs.snowflake.com/en/sql-reference/sql/create-cortex-search)
+- [CREATE MCP SERVER](https://docs.snowflake.com/en/sql-reference/sql/create-mcp-server)
 - [CREATE PROCEDURE](https://docs.snowflake.com/en/sql-reference/sql/create-procedure)
 
 ### Installation
@@ -432,16 +434,65 @@ The important dependency edges are the `ref()` calls inside `tool_resources`.
 dbt will compile them to fully qualified names and build the semantic view,
 search service, and stored procedure before the agent.
 
+### MCP Servers
+
+Create a model with `materialized='mcp_server'`. By default, the model body is
+the YAML specification object; the materialization adds
+`CREATE OR REPLACE MCP SERVER <target_relation> FROM SPECIFICATION $$ ... $$`.
+
+Use `ref()` for semantic views, Cortex Search services, Cortex Agents, UDFs, or
+stored procedures so dbt can build dependencies in the right order.
+
+```sql
+{{
+  config(
+    materialized='mcp_server',
+    static_analysis='off',
+    meta={
+      'dbt_snowflake_cortex': {
+        'comment': 'Retail MCP server backed by dbt-managed Cortex objects.'
+      }
+    }
+  )
+}}
+
+tools:
+  - name: "retail-orders-analyst"
+    type: "CORTEX_ANALYST_MESSAGE"
+    identifier: "{{ ref('sv_retail_orders') }}"
+    description: "Answers retail order, revenue, customer, and channel questions."
+    title: "Retail Orders Analyst"
+
+  - name: "policy-search"
+    type: "CORTEX_SEARCH_SERVICE_QUERY"
+    identifier: "{{ ref('retail_policy_search_service') }}"
+    description: "Searches retail operating procedures and return policies."
+    title: "Retail Policy Search"
+
+  - name: "sql-exec"
+    type: "SYSTEM_EXECUTE_SQL"
+    description: "Executes SQL against the connected Snowflake database."
+    title: "SQL Execution"
+```
+
+To use the pass-through style, set
+`meta.dbt_snowflake_cortex.mcp_server_body_mode: raw` or start the model body
+with `FROM SPECIFICATION`; the package will then append the body directly after
+`CREATE OR REPLACE MCP SERVER <target_relation>`.
+
+Snowflake's `CREATE MCP SERVER` syntax does not include an inline `COMMENT`
+clause. When `meta.dbt_snowflake_cortex.comment` or a model description is set,
+the materialization applies it after creation with `COMMENT ON MCP SERVER`.
+
 ### Documentation Persistence
 
 dbt-driven documentation persistence for Cortex object comments is not currently
 implemented by this package. Inline Snowflake comments and
-`meta.dbt_snowflake_cortex.comment` are supported because they are part of the
-DDL sent to Snowflake.
+`meta.dbt_snowflake_cortex.comment` are supported by each materialization.
 
 For Semantic Views, use inline `COMMENT` syntax in the semantic view definition.
-For Cortex Agents, Cortex Search services, and stored procedures, use the
-package `comment` config or the relevant Snowflake `COMMENT` clause in raw mode.
+For Cortex Agents, Cortex Search services, stored procedures, and MCP Servers,
+use the package `comment` config.
 
 ### Development
 
@@ -475,22 +526,25 @@ dbt deps --target snowflake
 dbt build --target snowflake
 ```
 
-Search service and stored procedure fixtures are opt-in because they require
-additional privileges and may create Cortex serving/indexing resources:
+Search service, stored procedure, and MCP Server fixtures are opt-in because
+they require additional privileges and may create Cortex serving/indexing or MCP
+resources:
 
 ```bash
 dbt build --target snowflake \
   --vars '{
     "dbt_snowflake_cortex_enable_cortex_search_integration_tests": true,
     "dbt_snowflake_cortex_enable_stored_procedure_integration_tests": true,
-    "dbt_snowflake_cortex_enable_agent_tool_integration_tests": true
+    "dbt_snowflake_cortex_enable_agent_tool_integration_tests": true,
+    "dbt_snowflake_cortex_enable_mcp_server_integration_tests": true
   }'
 ```
 
 The role used for integration tests needs the privileges required by the objects
 under test, including `CREATE SEMANTIC VIEW`, `CREATE AGENT`,
-`CREATE CORTEX SEARCH SERVICE`, `CREATE PROCEDURE`, warehouse `USAGE`, Cortex
-database roles for embedding/search, and access to referenced objects.
+`CREATE CORTEX SEARCH SERVICE`, `CREATE MCP SERVER`, `CREATE PROCEDURE`,
+warehouse `USAGE`, Cortex database roles for embedding/search, and access to
+referenced objects.
 
 To inspect representative DDL without creating Snowflake objects:
 

@@ -15,8 +15,14 @@
 
 {{
   config(
+    enabled=var('dbt_snowflake_cortex_enable_mcp_server_integration_tests', false),
     materialized='mcp_server',
-    comment='Integration test MCP server with Analyst and SQL execution tools.'
+    static_analysis='off',
+    meta={
+      'dbt_snowflake_cortex': {
+        'comment': 'Integration test MCP server with Analyst and SQL execution tools.'
+      }
+    }
   )
 }}
 

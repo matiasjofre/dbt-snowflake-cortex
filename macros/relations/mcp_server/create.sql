@@ -23,8 +23,7 @@
   {%- endfor -%}
   {%- set body = ns.first_line -%}
   {%- do return(
-      body[0:7] == 'comment'
-      or body[0:18] == 'from specification'
+      body[0:18] == 'from specification'
     ) -%}
 {%- endmacro %}
 
@@ -53,12 +52,14 @@
   {%- if body_mode not in ['auto', 'raw', 'specification'] -%}
     {{ exceptions.raise_compiler_error("Config `mcp_server_body_mode` must be one of `auto`, `raw`, or `specification`.") }}
   {%- endif -%}
+  {%- if body == '' -%}
+    {{ exceptions.raise_compiler_error("An `mcp_server` model must contain a YAML specification or raw MCP server body.") }}
+  {%- endif -%}
 
   create {{ dbt_snowflake_cortex.create_modifier(or_replace, if_not_exists) }} mcp server {{ dbt_snowflake_cortex.if_not_exists_clause(if_not_exists) }} {{ relation }}
   {%- if raw_body %}
   {{ body }}
   {%- else %}
-  {{ dbt_snowflake_cortex.comment_clause(dbt_snowflake_cortex.object_comment(dbt_snowflake_cortex.get_config('comment', none))) }}
   FROM SPECIFICATION
   $$
   {{ body }}
@@ -70,6 +71,7 @@
 
 {% macro snowflake__create_or_replace_mcp_server() %}
   {%- set identifier = model['alias'] -%}
+  {%- set comment = dbt_snowflake_cortex.object_comment(dbt_snowflake_cortex.get_config('comment', none)) -%}
 
   {%- set target_relation = api.Relation.create(
       identifier=identifier, schema=schema, database=database,
@@ -81,6 +83,12 @@
   {% call statement('main') -%}
     {{ dbt_snowflake_cortex.snowflake__get_create_mcp_server_sql(target_relation, sql) }}
   {%- endcall %}
+
+  {%- if comment is not none and comment != '' %}
+    {% call statement('comment') -%}
+      comment on mcp server {{ target_relation }} is {{ dbt_snowflake_cortex.sql_string(comment) }}
+    {%- endcall %}
+  {%- endif %}
 
   {{ run_hooks(post_hooks) }}
 

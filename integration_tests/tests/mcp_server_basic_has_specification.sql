@@ -13,10 +13,20 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
-{{ config(materialized='test') }}
+{{
+  config(
+    enabled=var('dbt_snowflake_cortex_enable_mcp_server_integration_tests', false),
+    materialized='mcp_server_specification_test',
+    meta={
+      'dbt_snowflake_cortex': {
+        'mcp_server_relation': ref('mcp_server_basic') | string,
+        'expected_text': 'test-analyst'
+      }
+    }
+  )
+}}
 
--- Assert the MCP Server DDL contains the expected tool name from the specification
-select 'MCP Server specification missing expected tool name' as error_message
-where position(
-  'test-analyst' in lower(get_ddl('MCP_SERVER', '{{ ref('mcp_server_basic') }}'))
-) = 0
+-- depends_on: {{ ref('mcp_server_basic') }}
+
+-- The custom materialization runs DESCRIBE MCP SERVER and checks server_spec.
+select 1 as ok
