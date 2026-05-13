@@ -84,11 +84,13 @@
     {{ dbt_snowflake_cortex.snowflake__get_create_mcp_server_sql(target_relation, sql) }}
   {%- endcall %}
 
-  {%- if comment is not none and comment != '' %}
+  {# COMMENT ON MCP SERVER is not yet supported by Snowflake (causes internal error).
+     When Snowflake adds support, uncomment the block below. #}
+  {#- if comment is not none and comment != '' %}
     {% call statement('comment') -%}
       comment on mcp server {{ target_relation }} is {{ dbt_snowflake_cortex.sql_string(comment) }}
     {%- endcall %}
-  {%- endif %}
+  {%- endif -#}
 
   {{ run_hooks(post_hooks) }}
 
